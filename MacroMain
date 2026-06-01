@@ -19,33 +19,58 @@ local isHubVisible = true
 local HttpService = game:GetService("HttpService")
 local player = game.Players.LocalPlayer
 local folderName = "Macro_Configs"
-local selectedFile = "" 
+local fileName = folderName .. "/" .. player.Name .. "_config.json"
 
--- Bọc pcall để nếu Executor lỗi hàm làm thư mục thì game vẫn chạy tiếp
-pcall(function()
-    if makefolder then makefolder(folderName) end
-end)
+-- Khởi tạo cấu trúc lưu trữ thư mục bảo mật
+if makefolder then
+    pcall(function()
+        makefolder(folderName)
+    end)
+end
 
+-- Hotkeys mặc định
 local recordHotkey = Enum.KeyCode.F1
 local playHotkey = Enum.KeyCode.F2
 local toggleHubHotkey = Enum.KeyCode.Insert
 
+-- Thiết lập vòng lặp mặc định
 local repeatMode = "Infinite" 
 local loopInterval = 0       
 local rejoinPersistent = false
-local targetHours, targetMinutes, targetSeconds, targetMaxCount = 0, 0, 0, 0
+
+local targetHours = 0
+local targetMinutes = 0
+local targetSeconds = 0
+local targetMaxCount = 0
 
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local mouse = player:GetMouse()
 
 -- ====================================================================
--- CORE FUNCTIONALITIES
+-- CORE FUNCTIONALITIES & AUTO FILE IO
 -- ====================================================================
 local function showToast(message)
     local ui = CoreGui:FindFirstChild("MacroSystem")
     if ui and ui:FindFirstChild("MainFrame") and ui.MainFrame:FindFirstChild("ToastLabel") then
         ui.MainFrame.ToastLabel.Text = "[LOG]: " .. tostring(message)
+    end
+end
+
+-- Hàm lưu cấu hình tự động bảo toàn dữ liệu
+local function saveMacroToFile()
+    if writefile then
+        local success, encoded = pcall(function()
+            return HttpService:JSONEncode(macroData)
+        end)
+        if success then
+            writefile(fileName, encoded)
+            showToast("Saved config for account: " .. player.Name)
+        else
+            showToast("Failed to serialize macro structure.")
+        end
+    else
+        showToast("Executor lack of writefile permissions.")
     end
 end
 
@@ -60,7 +85,7 @@ local function recordAction(actionTable)
     table.insert(macroData, actionTable)
 end
 
--- Input Listeners
+-- Hệ thống đánh chặn Input dữ liệu đầu vào (Keyboard)
 UserInputService.InputBegan:Connect(function(input, processed)
     local keyCode = input.KeyCode
     if keyCode == Enum.KeyCode.Unknown then return end
@@ -87,6 +112,7 @@ UserInputService.InputEnded:Connect(function(input, processed)
     end
 end)
 
+-- Hệ thống đánh chặn Input dữ liệu đầu vào (Mouse)
 UserInputService.InputBegan:Connect(function(input, processed)
     if not isRecording or isPlaying then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 and not processed then
@@ -122,7 +148,6 @@ MainFrame.Position = UDim2.new(0.5, -280, 0.5, -190)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active, MainFrame.Draggable = true, true
-MainFrame.Visible = true -- ÉP BUỘC HIỂN THỊ MẶC ĐỊNH
 MainFrame.Parent = ScreenGui
 HubScale.Parent = MainFrame
 
@@ -156,14 +181,15 @@ ContentFrame.Position = UDim2.new(0, 160, 0, 35)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.Parent = MainFrame
 
--- Nút nổi "❌" (Vì Hub đang mở sẵn)
+-- Nút nổi tròn thu nhỏ "M"
 local FloatBtn = Instance.new("TextButton")
 FloatBtn.Size, FloatBtn.Position = UDim2.new(0, 45, 0, 45), UDim2.new(0, 20, 0, 100)
-FloatBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-FloatBtn.Text, FloatBtn.TextSize = "❌", 22
+FloatBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
+FloatBtn.Text, FloatBtn.TextSize = "M", 22
 FloatBtn.TextColor3 = Color3.fromRGB(25, 25, 30)
 FloatBtn.Font = Enum.Font.SourceSansBold
 FloatBtn.BorderSizePixel = 0
+FloatBtn.Visible = true 
 FloatBtn.ZIndex = 9999   
 FloatBtn.Active, FloatBtn.Draggable = true, true
 FloatBtn.Parent = ScreenGui
@@ -173,12 +199,20 @@ local fc = Instance.new("UICorner") fc.CornerRadius = UDim.new(1, 0) fc.Parent =
 _G.ToggleHubVisibility = function()
     isHubVisible = not isHubVisible
     MainFrame.Visible = isHubVisible
-    FloatBtn.BackgroundColor3 = isHubVisible and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(255, 200, 50)
-    FloatBtn.Text = isHubVisible and "❌" or "M"
+    if isHubVisible then
+        FloatBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100) 
+        FloatBtn.Text = "❌"
+    else
+        FloatBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 50)  
+        FloatBtn.Text = "M"
+    end
 end
 FloatBtn.MouseButton1Click:Connect(_G.ToggleHubVisibility)
 
--- Quản lý Trang
+FloatBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+FloatBtn.Text = "❌"
+
+-- Pages Management
 local pages = {}
 local function createPage(name)
     local page = Instance.new("Frame")
@@ -197,12 +231,13 @@ local function createPage(name)
 end
 
 local macroPage = createPage("Macro")
-local storagePage = createPage("Storage") 
 local repeatPage = createPage("Repeat")
 local settingsPage = createPage("Settings")
 
 local function switchTab(tabName)
-    for name, page in pairs(pages) do page.Visible = (name == tabName) end
+    for name, page in pairs(pages) do 
+        page.Visible = (name == tabName) 
+    end
 end
 
 local function addTabBtn(name, order)
@@ -217,11 +252,10 @@ local function addTabBtn(name, order)
     btn.MouseButton1Click:Connect(function() switchTab(name) end)
 end
 addTabBtn("Macro", 0)
-addTabBtn("Storage", 1)
-addTabBtn("Repeat", 2)
-addTabBtn("Settings", 3)
+addTabBtn("Repeat", 1)
+addTabBtn("Settings", 2)
 
-local function createRow(parent, text)
+local function createRow(parent, text, infoDesc)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -10, 0, 40)
     row.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
@@ -236,13 +270,24 @@ local function createRow(parent, text)
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.BackgroundTransparency = 1
     label.Parent = row
+    
+    if infoDesc then
+        local infoBtn = Instance.new("TextButton")
+        infoBtn.Size = UDim2.new(0, 18, 0, 18)
+        infoBtn.Position = UDim2.new(0, label.TextBounds.X + 20, 0.5, -9)
+        infoBtn.BackgroundColor3, infoBtn.Text, infoBtn.TextColor3, infoBtn.TextSize = Color3.fromRGB(50, 50, 60), "?", Color3.fromRGB(255, 255, 100), 11
+        infoBtn.Font = Enum.Font.SourceSansBold
+        infoBtn.Parent = row
+        Instance.new("UICorner").Parent = infoBtn
+        infoBtn.MouseButton1Click:Connect(function() showToast("Help: " .. infoDesc) end)
+    end
     return row
 end
 
 -- ====================================================================
 -- TAB 1: MACRO CONTROLS
 -- ====================================================================
-local recRow = createRow(macroPage, "Record System")
+local recRow = createRow(macroPage, "Record System", "Start recording keyboard and mouse timeline.")
 local recBtn = Instance.new("TextButton")
 recBtn.Size, recBtn.Position = UDim2.new(0, 90, 0, 28), UDim2.new(1, -205, 0.5, -14)
 recBtn.BackgroundColor3, recBtn.Text, recBtn.TextColor3, recBtn.Font = Color3.fromRGB(180, 50, 50), "🔴 Record", Color3.fromRGB(255,255,255), Enum.Font.SourceSansBold
@@ -271,12 +316,12 @@ _G.ToggleRecordTrigger = function()
         showToast("Recording timeline started...")
     else
         recBtn.Text, recBtn.BackgroundColor3 = "🔴 Record", Color3.fromRGB(180, 50, 50)
-        showToast("Recording stopped. Open 'Storage' tab to Save!")
+        saveMacroToFile() 
     end
 end
 recBtn.MouseButton1Click:Connect(_G.ToggleRecordTrigger)
 
-local playRow = createRow(macroPage, "Replay System")
+local playRow = createRow(macroPage, "Replay System", "Loop playback of the recorded timeline sequence.")
 local playBtn = Instance.new("TextButton")
 playBtn.Size, playBtn.Position = UDim2.new(0, 90, 0, 28), UDim2.new(1, -205, 0.5, -14)
 playBtn.BackgroundColor3, playBtn.Text, playBtn.TextColor3, playBtn.Font = Color3.fromRGB(50, 150, 50), "▶️ Replay", Color3.fromRGB(255,255,255), Enum.Font.SourceSansBold
@@ -301,9 +346,9 @@ _G.TogglePlayTrigger = function()
     isPlaying = not isPlaying
     
     if isPlaying then
-        if #macroData == 0 then showToast("Error: No macro loaded or cached!") isPlaying = false return end
+        if #macroData == 0 then showToast("Error: Macro cache is blank!") isPlaying = false return end
         playBtn.Text, playBtn.BackgroundColor3 = "⏹️ Stop", Color3.fromRGB(200, 120, 30)
-        showToast("Replaying macro...")
+        showToast("Replaying macro timeline...")
         
         task.spawn(function()
             local loopCount = 0
@@ -312,7 +357,12 @@ _G.TogglePlayTrigger = function()
             while isPlaying do
                 for i, action in ipairs(macroData) do
                     if not isPlaying then break end
-                    if action.Delay and action.Delay > 0 then task.wait(action.Delay) else task.wait(0.001) end
+                    -- SAFETY VALVE: Ngăn chặn đứng luồng xử lý do khoảng cách thời gian bằng 0
+                    if action.Delay and action.Delay > 0 then 
+                        task.wait(action.Delay) 
+                    else
+                        task.wait(0.001)
+                    end
                     
                     if action.Type == "MouseDown" then
                         if mousemoveabs then mousemoveabs(action.X, action.Y) task.wait(0.01) end
@@ -321,6 +371,7 @@ _G.TogglePlayTrigger = function()
                         if mousemoveabs then mousemoveabs(action.X, action.Y) task.wait(0.01) end
                         VirtualInputManager:SendMouseButtonEvent(action.X, action.Y, 0, false, game, 1)
                     elseif action.Type == "KeyDown" then 
+                        -- Ép kiểu an toàn tránh lỗi nhận diện Enum từ JSON string bóc tách
                         local k = typeof(action.KeyCode) == "string" and Enum.KeyCode[action.KeyCode] or action.KeyCode
                         VirtualInputManager:SendKeyEvent(true, k, false, game)
                     elseif action.Type == "KeyUp" then 
@@ -348,142 +399,21 @@ _G.TogglePlayTrigger = function()
 end
 playBtn.MouseButton1Click:Connect(_G.TogglePlayTrigger)
 
--- ====================================================================
--- TAB 2: STORAGE MANAGEMENT (SAVE / LOAD / DELETE)
--- ====================================================================
-local nameRow = createRow(storagePage, "Macro Config Name")
-local nameInput = Instance.new("TextBox")
-nameInput.Size, nameInput.Position = UDim2.new(0, 185, 0, 28), UDim2.new(1, -195, 0.5, -14)
-nameInput.BackgroundColor3, nameInput.Text, nameInput.PlaceholderText, nameInput.TextColor3 = Color3.fromRGB(45,45,50), "", "Type name here...", Color3.fromRGB(255,255,255)
-nameInput.Font, nameInput.TextSize = Enum.Font.SourceSans, 14
-nameInput.Parent = nameRow Instance.new("UICorner").Parent = nameInput
+local utilRow = createRow(macroPage, "Macro Operations", "Flushes cache or exports serialized configuration strings.")
+local clrBtn = Instance.new("TextButton") clrBtn.Size, clrBtn.Position = UDim2.new(0, 90, 0, 28), UDim2.new(1, -205, 0.5, -14) clrBtn.BackgroundColor3, clrBtn.Text, clrBtn.TextColor3 = Color3.fromRGB(70,70,80), "🗑️ Clear", Color3.fromRGB(255,255,255) clrBtn.Parent = utilRow Instance.new("UICorner").Parent = clrBtn
+clrBtn.MouseButton1Click:Connect(function() macroData = {} saveMacroToFile() showToast("Cache wiped clean.") end)
 
-local selectRow = createRow(storagePage, "Select Macro File")
-local dropFileBtn = Instance.new("TextButton")
-dropFileBtn.Size, dropFileBtn.Position = UDim2.new(0, 185, 0, 28), UDim2.new(1, -195, 0.5, -14)
-dropFileBtn.BackgroundColor3, dropFileBtn.Text, dropFileBtn.TextColor3, dropFileBtn.Font = Color3.fromRGB(55,55,65), "Choose File ▼", Color3.fromRGB(255,255,255), Enum.Font.SourceSansBold
-dropFileBtn.ZIndex = 20
-dropFileBtn.Parent = selectRow Instance.new("UICorner").Parent = dropFileBtn
-
-local fileListFrame = Instance.new("ScrollingFrame")
-fileListFrame.Size = UDim2.new(1, 0, 0, 120)
-fileListFrame.Position = UDim2.new(0, 0, 1, 5)
-fileListFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 33)
-fileListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-fileListFrame.ScrollBarThickness = 4
-fileListFrame.Visible = false
-fileListFrame.ZIndex = 500
-fileListFrame.Parent = dropFileBtn
-Instance.new("UICorner").Parent = fileListFrame
-local flList = Instance.new("UIListLayout") flList.Parent = fileListFrame
-
-local function updateFileList()
-    pcall(function()
-        for _, child in ipairs(fileListFrame:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
-        end
-        if listfiles then
-            local files = listfiles(folderName)
-            fileListFrame.CanvasSize = UDim2.new(0, 0, 0, #files * 28)
-            for _, path in ipairs(files) do
-                local fName = path:match("([^/\\]+)$")
-                local btn = Instance.new("TextButton")
-                btn.Size = UDim2.new(1, 0, 0, 25)
-                btn.BackgroundTransparency = 1
-                btn.Text, btn.TextColor3, btn.TextSize = fName, Color3.fromRGB(230,230,230), 13
-                btn.ZIndex = 501
-                btn.Parent = fileListFrame
-                btn.MouseButton1Click:Connect(function()
-                    selectedFile = path
-                    dropFileBtn.Text = fName
-                    fileListFrame.Visible = false
-                end)
-            end
-        end
-    end)
-end
-dropFileBtn.MouseButton1Click:Connect(function()
-    updateFileList()
-    fileListFrame.Visible = not fileListFrame.Visible
-end)
-
-local actionRow = createRow(storagePage, "Storage Actions")
-actionRow.Size = UDim2.new(1, -10, 0, 50)
-
-local function buildBtn(txt, color, posIndex, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 75, 0, 32)
-    btn.Position = UDim2.new(1, -250 + (posIndex * 82), 0.5, -16)
-    btn.BackgroundColor3, btn.Text, btn.TextColor3, btn.Font = color, txt, Color3.fromRGB(255,255,255), Enum.Font.SourceSansBold
-    btn.Parent = actionRow Instance.new("UICorner").Parent = btn
-    btn.MouseButton1Click:Connect(callback)
-end
-
--- Nút SAVE
-buildBtn("💾 Save", Color3.fromRGB(40, 120, 200), 0, function()
-    local inputName = nameInput.Text:gsub("%s+", "")
-    if inputName == "" then showToast("Error: Please type a name first!") return end
-    if #macroData == 0 then showToast("Error: Cache is empty, record something first.") return end
-    
-    if writefile then
-        local targetPath = folderName .. "/" .. inputName .. ".json"
-        local success, encoded = pcall(function() return HttpService:JSONEncode(macroData) end)
-        if success then
-            writefile(targetPath, encoded)
-            showToast("Successfully saved: " .. inputName .. ".json")
-            updateFileList()
-        else
-            showToast("Failed to encode script data.")
-        end
-    else
-        showToast("Executor lack of writefile API.")
-    end
-end)
-
--- Nút LOAD
-buildBtn("📂 Load", Color3.fromRGB(50, 150, 50), 1, function()
-    if selectedFile == "" or not isfile(selectedFile) then showToast("Error: Select a file from dropdown!") return end
-    if readfile then
-        pcall(function()
-            local parsed = HttpService:JSONDecode(readfile(selectedFile))
-            if type(parsed) == "table" then
-                macroData = {}
-                for _, act in ipairs(parsed) do
-                    if act.KeyCode and type(act.KeyCode) == "string" then act.KeyCode = Enum.KeyCode[act.KeyCode] end
-                    table.insert(macroData, act)
-                end
-                showToast("🔥 Load Success! Loaded " .. #macroData .. " nodes.")
-            end
-        end)
-    else
-        showToast("Executor lack of readfile API.")
-    end
-end)
-
--- Nút DELETE
-buildBtn("🗑️ Delete", Color3.fromRGB(180, 50, 50), 2, function()
-    if selectedFile == "" or not isfile(selectedFile) then showToast("Error: Select a target file!") return end
-    if delfile then
-        pcall(function()
-            delfile(selectedFile)
-            showToast("Permanent deletion successful.")
-            selectedFile = ""
-            dropFileBtn.Text = "Choose File ▼"
-            updateFileList()
-        end)
-    else
-        showToast("Executor lack of delfile API.")
-    end
-end)
+local cpyBtn = Instance.new("TextButton") cpyBtn.Size, cpyBtn.Position = UDim2.new(0, 90, 0, 28), UDim2.new(1, -100, 0.5, -14) cpyBtn.BackgroundColor3, cpyBtn.Text, cpyBtn.TextColor3 = Color3.fromRGB(70,70,80), "📋 Copy Config", Color3.fromRGB(255,255,255) cpyBtn.Parent = utilRow Instance.new("UICorner").Parent = cpyBtn
+cpyBtn.MouseButton1Click:Connect(function() if setclipboard then setclipboard("local loadedMacro = " .. HttpService:JSONEncode(macroData)) showToast("Macro config string copied!") else showToast("Executor clipboard blocked.") end end)
 
 -- ====================================================================
--- TAB 3 & 4: REPEAT & SETTINGS
+-- TAB 2: REPEAT CONFIGS
 -- ====================================================================
-local rejRow = createRow(repeatPage, "Persistent Rejoin Run")
+local rejRow = createRow(repeatPage, "Persistent Rejoin Run", "Auto-saves to workspace and replays upon rejoining.")
 local rejToggle = Instance.new("TextButton") rejToggle.Size, rejToggle.Position = UDim2.new(0, 90, 0, 28), UDim2.new(1, -100, 0.5, -14) rejToggle.BackgroundColor3, rejToggle.Text, rejToggle.TextColor3 = Color3.fromRGB(150, 50, 50), "OFF", Color3.fromRGB(255,255,255) rejToggle.Parent = rejRow Instance.new("UICorner").Parent = rejToggle
 rejToggle.MouseButton1Click:Connect(function() rejoinPersistent = not rejoinPersistent rejToggle.Text = rejoinPersistent and "ON" or "OFF" rejToggle.BackgroundColor3 = rejoinPersistent and Color3.fromRGB(50,150,50) or Color3.fromRGB(150,50,50) end)
 
-local dropRow = createRow(repeatPage, "Loop Mode Selection")
+local dropRow = createRow(repeatPage, "Loop Mode Selection", "Select how the macro loops.")
 local dropMainBtn = Instance.new("TextButton")
 dropMainBtn.Size, dropMainBtn.Position = UDim2.new(0, 130, 0, 28), UDim2.new(1, -140, 0.5, -14)
 dropMainBtn.BackgroundColor3, dropMainBtn.Text, dropMainBtn.TextColor3, dropMainBtn.Font = Color3.fromRGB(55,55,65), "♾️ Infinite ▼", Color3.fromRGB(255,255,255), Enum.Font.SourceSansBold
@@ -527,11 +457,13 @@ local function updateFieldsVisibility(mode)
     repeatMode = mode
     dropListFrame.Visible = false
     dropMainBtn.Text = (mode == "Infinite" and "♾️ Infinite ▼") or (mode == "Time" and "⏱️ By Time ▼") or "🔄 By Times ▼"
+    
     hrBox.Visible = (mode == "Time")
     minBox.Visible = (mode == "Time")
     secBox.Visible = (mode == "Time")
     cntBox.Visible = (mode == "Times")
 end
+
 dropMainBtn.MouseButton1Click:Connect(function() dropListFrame.Visible = not dropListFrame.Visible end)
 
 local function addOption(label, modeVal, pos)
@@ -553,15 +485,17 @@ minBox.FocusLost:Connect(function() targetMinutes = tonumber(minBox.Text) or 0 e
 secBox.FocusLost:Connect(function() targetSeconds = tonumber(secBox.Text) or 0 end)
 cntBox.FocusLost:Connect(function() targetMaxCount = tonumber(cntBox.Text) or 0 end)
 
-local intervalRow = createRow(repeatPage, "Delay Between Loops")
+local intervalRow = createRow(repeatPage, "Delay Between Loops", "Seconds to pause before next loop.")
 local intervalInput = Instance.new("TextBox")
 intervalInput.Size, intervalInput.Position = UDim2.new(0, 100, 0, 28), UDim2.new(1, -110, 0.5, -14)
 intervalInput.BackgroundColor3, intervalInput.Text, intervalInput.PlaceholderText, intervalInput.TextColor3 = Color3.fromRGB(45,45,50), "", "0 (s)", Color3.fromRGB(255,255,255)
 intervalInput.Parent = intervalRow Instance.new("UICorner").Parent = intervalInput
 intervalInput.FocusLost:Connect(function() loopInterval = tonumber(intervalInput.Text) or 0 showToast("Interval updated to " .. loopInterval .. "s") end)
 
--- SETTINGS TAB
-local toggleRow = createRow(settingsPage, "Toggle UI Hotkey")
+-- ====================================================================
+-- TAB 3: SYSTEM SETTINGS (FULLY INSTANT DYNAMIC SYNC FIXED)
+-- ====================================================================
+local toggleRow = createRow(settingsPage, "Toggle UI Hotkey", "Key to completely hide/show the window frame.")
 local toggleBind = Instance.new("TextButton") toggleBind.Size, toggleBind.Position = UDim2.new(0, 110, 0, 28), UDim2.new(1, -120, 0.5, -14) toggleBind.BackgroundColor3, toggleBind.Text, toggleBind.TextColor3 = Color3.fromRGB(50,50,55), "[ Insert ]", Color3.fromRGB(255,255,255) toggleBind.Parent = toggleRow Instance.new("UICorner").Parent = toggleBind
 
 local checkingToggle = false
@@ -573,12 +507,14 @@ UserInputService.InputBegan:Connect(function(input)
     end
 end)
 
-local scaleHubRow = createRow(settingsPage, "Hub Visual Scale")
+-- FIXED INSTANT HUB SCALE (Xử lý vị trí chuột chính xác bằng tỷ lệ động)
+local scaleHubRow = createRow(settingsPage, "Hub Visual Scale", "Proportionally scale full window structure.")
 local sHubFrame = Instance.new("Frame") sHubFrame.Size, sHubFrame.Position = UDim2.new(0, 140, 0, 8), UDim2.new(1, -150, 0.5, -4) sHubFrame.BackgroundColor3 = Color3.fromRGB(40,40,45) sHubFrame.Parent = scaleHubRow
 local sHubBtn = Instance.new("TextButton") sHubBtn.Size, sHubBtn.Position = UDim2.new(0, 16, 0, 16), sHubBtn.Position = UDim2.new(0.5, -8, 0.5, -8) sHubBtn.BackgroundColor3, sHubBtn.Text = Color3.fromRGB(255,200,50), "" sHubBtn.Parent = sHubFrame Instance.new("UICorner").Parent = sHubBtn
 
 local slidingHub = false
 sHubBtn.MouseButton1Down:Connect(function() slidingHub = true end)
+
 mouse.Move:Connect(function()
     if slidingHub then
         local percentage = math.clamp((mouse.X - sHubFrame.AbsolutePosition.X) / sHubFrame.AbsoluteSize.X, 0, 1)
@@ -586,14 +522,22 @@ mouse.Move:Connect(function()
         HubScale.Scale = 0.6 + (percentage * 0.8) 
     end
 end)
-UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingHub = false end end)
 
-local scaleBtnRow = createRow(settingsPage, "Float Button Scale")
+UserInputService.InputEnded:Connect(function(input) 
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and slidingHub then 
+        slidingHub = false 
+        showToast("Hub scale synchronized.")
+    end 
+end)
+
+-- FIXED INSTANT BUTTON SCALE (Không lệch trục tọa độ chuột)
+local scaleBtnRow = createRow(settingsPage, "Float Button Scale", "Scales the shortcut miniature circular button Overlay.")
 local sBtnFrame = Instance.new("Frame") sBtnFrame.Size, sBtnFrame.Position = UDim2.new(0, 140, 0, 8), UDim2.new(1, -150, 0.5, -4) sBtnFrame.BackgroundColor3 = Color3.fromRGB(40,40,45) sBtnFrame.Parent = scaleBtnRow
 local sBtnBtn = Instance.new("TextButton") sBtnBtn.Size, sBtnBtn.Position = UDim2.new(0, 16, 0, 16), sBtnBtn.Position = UDim2.new(0.5, -8, 0.5, -8) sBtnBtn.BackgroundColor3, sBtnBtn.Text = Color3.fromRGB(255,200,50), "" sBtnBtn.Parent = sBtnFrame Instance.new("UICorner").Parent = sBtnBtn
 
 local slidingBtn = false
 sBtnBtn.MouseButton1Down:Connect(function() slidingBtn = true end)
+
 mouse.Move:Connect(function()
     if slidingBtn then
         local percentage = math.clamp((mouse.X - sBtnFrame.AbsolutePosition.X) / sBtnFrame.AbsoluteSize.X, 0, 1)
@@ -601,7 +545,32 @@ mouse.Move:Connect(function()
         ButtonScale.Scale = 0.5 + (percentage * 1.5)
     end
 end)
-UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingBtn = false end end)
+
+UserInputService.InputEnded:Connect(function(input) 
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and slidingBtn then 
+        slidingBtn = false 
+        showToast("Button scale applied instantly.")
+    end 
+end)
+
+-- ====================================================================
+-- AUTO-LOAD CONFIG & SANITIZATION SYSTEM
+-- ====================================================================
+if readfile and isfile and isfile(fileName) then 
+    pcall(function() 
+        local parsed = HttpService:JSONDecode(readfile(fileName)) 
+        if type(parsed) == "table" then
+            macroData = {}
+            -- Chuẩn hóa lại kiểu dữ liệu KeyCode từ String về Enum thực tế của Roblox
+            for _, act in ipairs(parsed) do
+                if act.KeyCode and type(act.KeyCode) == "string" then
+                    act.KeyCode = Enum.KeyCode[act.KeyCode]
+                end
+                table.insert(macroData, act)
+            end
+            showToast("Successfully loaded account config data!") 
+        end
+    end) 
+end
 
 switchTab("Macro")
-updateFileList()
